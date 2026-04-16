@@ -1,192 +1,165 @@
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LogicLab - 電路實作與邏輯學習中心</title>
-    <!-- 載入 Tailwind CSS -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LogicLab - 全方位電路學習中心</title>
+    <!-- 載入外部資源 -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 載入 React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- 載入 Babel 用於解析 JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- 載入 Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; }
+        body { font-family: 'Inter', sans-serif; touch-action: manipulation; }
         .cursor-crosshair { cursor: crosshair; }
-        /* 確保 Lucide 圖示有正確的預設大小 */
-        .lucide {
-            display: inline-block;
-            vertical-align: middle;
-        }
+        .lucide { display: inline-block; vertical-align: middle; }
+        .glass-morphism { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
-<body>
+<body class="bg-slate-50">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
-        const appId = 'logiclab-v2';
-
-        // --- 修正後的 Icon 組件 ---
+        // --- 萬用圖示組件 ---
         const Icon = ({ name, size = 24, className = "" }) => {
             const iconRef = useRef(null);
-
             useEffect(() => {
-                // 每次 name 改變時重新渲染圖示
                 if (window.lucide && iconRef.current) {
-                    // 清除舊內容
                     iconRef.current.innerHTML = '';
-                    // 建立一個新的 i 標籤供 lucide 替換
                     const i = document.createElement('i');
-                    i.setAttribute('data-lucide', name.toLowerCase().replace(/([a-z])([A-Z])/g, '$1-$2')); // camelCase 轉 kebab-case
-                    i.style.width = `${size}px`;
-                    i.style.height = `${size}px`;
+                    i.setAttribute('data-lucide', name.toLowerCase().replace(/([a-z])([A-Z])/g, '$1-$2'));
+                    i.style.width = `${size}px`; i.style.height = `${size}px`;
                     if (className) i.className = className;
                     iconRef.current.appendChild(i);
-                    
-                    window.lucide.createIcons({
-                        attrs: {
-                            stroke: 'currentColor',
-                            'stroke-width': 2,
-                            'stroke-linecap': 'round',
-                            'stroke-linejoin': 'round',
-                            width: size,
-                            height: size
-                        }
-                    });
+                    window.lucide.createIcons();
                 }
             }, [name, size, className]);
-
             return <span ref={iconRef} className="inline-flex items-center justify-center"></span>;
         };
 
         // ==========================================
-        // 1. 零件百科 (Encyclopedia)
+        // 1. 登入/註冊模組
         // ==========================================
-        const EncyclopediaModule = ({ onBack, cloudData, onUpdateCloud }) => {
-            const [currentIdx, setCurrentIdx] = useState(0);
-            const [note, setNote] = useState("");
-            const canvasRef = useRef(null);
-            const [isDrawing, setIsDrawing] = useState(false);
-            const [brushColor, setBrushColor] = useState('black');
+        const AuthModule = ({ onLoginSuccess }) => {
+            const [isRegister, setIsRegister] = useState(false);
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [userId, setUserId] = useState('');
+            const [msg, setMsg] = useState('');
 
-            const components = [
-                { name: "電阻器 (Resistor)", icon: "〰️", desc: "阻礙電流流通的零件。利用色環標記阻值，用來保護電路零件不被過大的電流燒毀。", apply: "常見於：LED 限流、電壓分配。", wiki: "電阻器" },
-                { name: "電容器 (Capacitor)", icon: "⫽", desc: "儲存電荷的元件。能在電壓波動時提供穩定的電壓輸出。", apply: "常見於：電源濾波、定時器、閃光燈。", wiki: "電容器" },
-                { name: "二極體 (Diode)", icon: "▶️", desc: "電流的單向閥。只準電流朝一個方向流動，具有單向導電性。", apply: "常見於：整流電路（AC轉DC）、電路保護。", wiki: "二極體" },
-                { name: "發光二極體 (LED)", icon: "💡", desc: "通電會發光的二極體。具有節能、反應快、壽命長的特點。", apply: "常見於：指示燈、手電筒、顯示螢幕。", wiki: "發光二極體" },
-                { name: "電晶體 (Transistor)", icon: "🎋", desc: "電子電路的核心元件。可作為電子開關或放大微小訊號。", apply: "常見於：電腦 CPU、音訊放大器。", wiki: "電晶體" }
-            ];
-
-            const currentComp = components[currentIdx];
-
-            useEffect(() => {
-                const canvas = canvasRef.current;
-                if (canvas) {
-                    const ctx = canvas.getContext('2d');
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    const savedData = cloudData?.encyclopedia?.[currentComp.name] || {};
-                    setNote(savedData.text || "");
-                    if (savedData.drawing) {
-                        const img = new Image();
-                        img.onload = () => ctx.drawImage(img, 0, 0);
-                        img.src = savedData.drawing;
-                    }
+            const handleAction = () => {
+                if (!email || !password) { setMsg('請填寫完整資訊'); return; }
+                const users = JSON.parse(localStorage.getItem('lab_users') || '[]');
+                if (isRegister) {
+                    if (users.find(u => u.email === email)) { setMsg('此信箱已註冊'); return; }
+                    users.push({ email, password, userId: userId || '新學員' });
+                    localStorage.setItem('lab_users', JSON.stringify(users));
+                    setMsg('註冊成功！請登入'); setIsRegister(false);
+                } else {
+                    const user = users.find(u => u.email === email && u.password === password);
+                    if (user) onLoginSuccess(user); else setMsg('信箱或密碼錯誤');
                 }
-            }, [currentIdx, cloudData]);
-
-            const saveToLocal = () => {
-                const drawing = canvasRef.current.toDataURL();
-                const updatedEncyclopedia = {
-                    ...(cloudData?.encyclopedia || {}),
-                    [currentComp.name]: { text: note, drawing }
-                };
-                onUpdateCloud({ encyclopedia: updatedEncyclopedia });
-            };
-
-            const startDrawing = (e) => {
-                const rect = canvasRef.current.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                const ctx = canvasRef.current.getContext('2d');
-                ctx.beginPath();
-                ctx.moveTo(x, y);
-                ctx.strokeStyle = brushColor;
-                ctx.lineWidth = 3;
-                ctx.lineCap = 'round';
-                setIsDrawing(true);
-            };
-
-            const draw = (e) => {
-                if (!isDrawing) return;
-                const rect = canvasRef.current.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                const ctx = canvasRef.current.getContext('2d');
-                ctx.lineTo(x, y);
-                ctx.stroke();
             };
 
             return (
-                <div className="flex flex-col h-screen bg-slate-50 overflow-y-auto pb-10">
-                    <div className="p-4 bg-white border-b sticky top-0 z-10 flex items-center justify-between">
-                        <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full flex items-center gap-2 font-bold text-slate-600">
-                            <Icon name="ArrowLeft" size={20} /> 返回
-                        </button>
-                        <h2 className="font-black text-xl text-slate-800">零件百科 & 筆記區</h2>
-                        <div className="text-xs text-slate-400">本地儲存模式</div>
+                <div className="min-h-screen flex items-center justify-center p-4 bg-slate-900">
+                    <div className="bg-white w-full max-w-md p-8 rounded-[2.5rem] shadow-2xl">
+                        <div className="text-center mb-8">
+                            <h2 className="text-3xl font-black text-slate-800 tracking-tight">LogicLab 學習中心</h2>
+                            <p className="text-slate-400 text-sm mt-2 font-bold">Cloud Learning Interface</p>
+                        </div>
+                        <div className="space-y-4">
+                            {isRegister && <input type="text" placeholder="使用者 ID" className="w-full p-4 bg-slate-100 rounded-xl outline-none" value={userId} onChange={e => setUserId(e.target.value)} />}
+                            <input type="email" placeholder="信箱" className="w-full p-4 bg-slate-100 rounded-xl outline-none" value={email} onChange={e => setEmail(e.target.value)} />
+                            <input type="password" placeholder="密碼" className="w-full p-4 bg-slate-100 rounded-xl outline-none" value={password} onChange={e => setPassword(e.target.value)} />
+                            {msg && <p className="text-rose-500 text-center text-xs font-bold">{msg}</p>}
+                            <button onClick={handleAction} className="w-full py-4 bg-blue-600 text-white rounded-xl font-black transition hover:bg-blue-700">{isRegister ? '立即註冊' : '登入中心'}</button>
+                        </div>
+                        <button onClick={() => setIsRegister(!isRegister)} className="mt-6 w-full text-slate-400 font-bold text-sm underline">{isRegister ? '切換至登入' : '還沒有帳號？點此註冊'}</button>
                     </div>
-                    <div className="max-w-6xl mx-auto w-full p-6 space-y-8">
-                        <div className="bg-white rounded-[2.5rem] shadow-xl overflow-hidden grid grid-cols-1 lg:grid-cols-2">
-                            <div className="bg-slate-100 flex flex-col items-center justify-center p-12 border-r">
-                                <div className="text-9xl mb-4">{currentComp.icon}</div>
-                                <button 
-                                    onClick={() => window.open(`https://www.google.com/search?tbm=isch&q=${encodeURIComponent(currentComp.name)}`, '_blank')}
-                                    className="text-blue-600 font-bold hover:underline"
-                                >點擊查看真實圖片</button>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 2. 元件百科模組
+        // ==========================================
+        const EncyclopediaModule = ({ onBack }) => {
+            const [currentIdx, setCurrentIdx] = useState(0);
+            const [notes, setNotes] = useState(() => JSON.parse(localStorage.getItem('lab_notes') || '{}'));
+            
+            const components = [
+                { id: 1, name: "麵包版", desc: "電路原型設計的基礎底板，不需焊接即可連接元件。", usage: "將元件插入孔洞，利用內部金屬片連通。", img: "https://upload.wikimedia.org/wikipedia/commons/7/73/Breadboard_schematic.png" },
+                { id: 2, name: "電阻器 (Resistor)", desc: "限制電流流量，保護其他敏感元件。", usage: "串聯於電路中以分壓或限流。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Resistor_Network.jpg/200px-Resistor_Network.jpg" },
+                { id: 3, name: "電容器 (Capacitor)", desc: "儲存電荷，平滑電壓波動。", usage: "用於電源濾波或訊號耦合。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/Electronic_component_capacitors.jpg/200px-Electronic_component_capacitors.jpg" },
+                { id: 4, name: "二極體 (Diode)", desc: "允許電流單向流動。", usage: "整流、保護電路防止極性反接。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Diodes-various.jpg/200px-Diodes-various.jpg" },
+                { id: 5, name: "電晶體 (Transistor)", desc: "電流控制器件，可作開關或放大器。", usage: "控制大電流電路、數位邏輯切換。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Transistors-all_sizes.jpg/200px-Transistors-all_sizes.jpg" },
+                { id: 6, name: "電位器 (Potentiometer)", desc: "可變電阻，通常帶有旋鈕。", usage: "調整音量、亮度等模擬參數。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Potentiometer.jpg/200px-Potentiometer.jpg" },
+                { id: 7, name: "光敏電阻 (LDR)", desc: "阻值隨光照強度改變。", usage: "光控開關、亮度檢測。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Light_Dependent_Resistor.jpg/200px-Light_Dependent_Resistor.jpg" },
+                { id: 8, name: "熱敏電阻 (Thermistor)", desc: "阻值隨溫度改變。", usage: "溫度檢測、過熱保護。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Modern_Thermistors.JPG/200px-Modern_Thermistors.JPG" },
+                { id: 9, name: "按鈕開關 (Push Button)", desc: "瞬時觸點式開關。", usage: "手動輸入、訊號重置。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/Push_button_switch_01.jpg/200px-Push_button_switch_01.jpg" },
+                { id: 10, name: "指撥開關 (DIP Switch)", desc: "集成在小型封裝中的一系列開關。", usage: "設定配置、二進位輸入。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Dip_switch_01_ies.jpg/200px-Dip_switch_01_ies.jpg" },
+                { id: 11, name: "蜂鳴器 (Buzzer)", desc: "將電能轉化為聲音的聲響元件。", usage: "警報提示、狀態音效。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Piezo_Buzzer.jpg/200px-Piezo_Buzzer.jpg" },
+                { id: 12, name: "保險絲 (Fuse)", desc: "過載保護元件。", usage: "電流過大時熔斷以切斷電路。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f0/Fuses_cylindrical_various.jpg/200px-Fuses_cylindrical_various.jpg" },
+                { id: 13, name: "壓敏電阻 (Varistor)", desc: "對電壓敏感的電阻，吸收突波。", usage: "過壓保護、雷擊保護。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/VDR_varistors.jpg/200px-VDR_varistors.jpg" },
+                { id: 14, name: "邏輯閘 IC (Logic Gates)", desc: "執行布林邏輯運算的集成電路。", usage: "數位計算、決策判斷。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/Hex_inverter_IC_74LS04.jpg/200px-Hex_inverter_IC_74LS04.jpg" },
+                { id: 15, name: "555 計時器 (555 Timer IC)", desc: "精確時間延時與振盪電路。", usage: "定時開關、PWM 產生器。", img: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/NE555_Internal_Block_Diagram.svg/200px-NE555_Internal_Block_Diagram.svg.png" }
+            ];
+
+            const handleNoteChange = (e) => {
+                const newNotes = { ...notes, [components[currentIdx].id]: e.target.value };
+                setNotes(newNotes);
+                localStorage.setItem('lab_notes', JSON.stringify(newNotes));
+            };
+
+            const next = () => setCurrentIdx((currentIdx + 1) % components.length);
+            const prev = () => setCurrentIdx((currentIdx - 1 + components.length) % components.length);
+
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (e.key === "ArrowRight") next();
+                    if (e.key === "ArrowLeft") prev();
+                };
+                window.addEventListener("keydown", handleKeyDown);
+                return () => window.removeEventListener("keydown", handleKeyDown);
+            }, [currentIdx]);
+
+            const item = components[currentIdx];
+
+            return (
+                <div className="min-h-screen bg-white">
+                    <nav className="p-4 border-b flex items-center justify-between sticky top-0 bg-white z-50">
+                        <button onClick={onBack} className="p-2 flex items-center gap-2 text-blue-600 font-bold"><Icon name="ArrowLeft"/> 返回</button>
+                        <h2 className="font-black text-xl">元件百科 ({currentIdx+1}/15)</h2>
+                        <div className="w-10"></div>
+                    </nav>
+                    <div className="max-w-4xl mx-auto p-4 sm:p-8 space-y-8">
+                        <div className="flex items-center justify-between gap-4">
+                            <button onClick={prev} className="p-4 bg-slate-100 rounded-2xl hover:bg-blue-100 text-blue-600 font-bold transition">左</button>
+                            <div className="flex-1 text-center group cursor-pointer" onClick={() => window.open(`https://www.google.com/search?q=${item.name}&tbm=isch`)}>
+                                <div className="bg-slate-50 p-6 rounded-[2.5rem] inline-block shadow-inner hover:shadow-lg transition-all">
+                                    <img src={item.img} alt={item.name} className="h-48 sm:h-64 object-contain" />
+                                </div>
+                                <p className="mt-2 text-xs text-slate-400">點擊圖片查詢 Google 圖片</p>
+                                <button onClick={(e) => {e.stopPropagation(); window.open(`https://zh.wikipedia.org/wiki/${item.name}`)}} className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-full font-bold shadow-lg shadow-blue-200">維基百科查詢</button>
                             </div>
-                            <div className="p-8 lg:p-12">
-                                <div className="flex justify-between">
-                                    <span className="text-slate-200 font-black text-5xl italic">{String(currentIdx + 1).padStart(2, '0')}</span>
-                                    <a href={`https://zh.wikipedia.org/wiki/${encodeURIComponent(currentComp.wiki)}`} target="_blank" className="bg-blue-50 text-blue-600 px-4 py-2 rounded-full text-sm font-bold">維基連結</a>
-                                </div>
-                                <h2 className="text-3xl font-bold mt-4 mb-4">{currentComp.name}</h2>
-                                <p className="text-slate-600 text-lg mb-6 leading-relaxed">{currentComp.desc}</p>
-                                <div className="bg-emerald-50 p-6 rounded-2xl border-l-8 border-emerald-400 mb-8 text-emerald-700 font-bold">{currentComp.apply}</div>
-                                <div className="flex gap-4">
-                                    <button onClick={() => setCurrentIdx((prev) => (prev - 1 + components.length) % components.length)} className="flex-1 py-4 bg-slate-100 rounded-xl font-bold">上一個</button>
-                                    <button onClick={() => setCurrentIdx((prev) => (prev + 1) % components.length)} className="flex-1 py-4 bg-slate-900 text-white rounded-xl font-bold">下一個</button>
-                                </div>
+                            <button onClick={next} className="p-4 bg-slate-100 rounded-2xl hover:bg-blue-100 text-blue-600 font-bold transition">右</button>
+                        </div>
+                        <div className="space-y-4">
+                            <h3 className="text-3xl font-black text-slate-800">{item.name}</h3>
+                            <div className="bg-slate-50 p-6 rounded-3xl space-y-4">
+                                <div><h4 className="font-bold text-blue-600 mb-1">功能介紹</h4><p className="text-slate-600">{item.desc}</p></div>
+                                <div><h4 className="font-bold text-blue-600 mb-1">實務運用</h4><p className="text-slate-600">{item.usage}</p></div>
                             </div>
                         </div>
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <div className="lg:col-span-2 bg-white p-6 rounded-3xl shadow-lg">
-                                <h3 className="font-bold text-slate-700 mb-4">✍️ 電路圖草繪</h3>
-                                <canvas 
-                                    ref={canvasRef}
-                                    width={700} height={300}
-                                    onMouseDown={startDrawing}
-                                    onMouseMove={draw}
-                                    onMouseUp={() => { setIsDrawing(false); saveToLocal(); }}
-                                    className="w-full bg-slate-50 border-2 border-dashed rounded-2xl cursor-crosshair"
-                                />
-                            </div>
-                            <div className="bg-white p-6 rounded-3xl shadow-lg flex flex-col border-t-4 border-amber-400">
-                                <h3 className="font-bold mb-4 text-slate-700 flex items-center gap-2"><Icon name="Save" size={16}/> 學習筆記</h3>
-                                <textarea 
-                                    value={note}
-                                    onChange={(e) => setNote(e.target.value)}
-                                    onBlur={saveToLocal}
-                                    className="flex-1 w-full p-4 bg-yellow-50 rounded-2xl border-none focus:ring-0 resize-none text-slate-700"
-                                    placeholder="內容會自動儲存..."
-                                />
-                            </div>
+                        <div className="space-y-2">
+                            <h4 className="font-bold text-slate-800 flex items-center gap-2"><Icon name="Edit3" size={18}/> 學習筆記區</h4>
+                            <textarea value={notes[item.id] || ""} onChange={handleNoteChange} placeholder="在這裡輸入您的學習心得..." className="w-full h-40 p-6 bg-amber-50 rounded-3xl outline-none focus:ring-2 ring-amber-200 transition text-slate-700"></textarea>
                         </div>
                     </div>
                 </div>
@@ -194,67 +167,173 @@
         };
 
         // ==========================================
-        // 2. 數據實驗室 (LabModule)
+        // 3. 邏輯挑戰島模組
         // ==========================================
-        const LabModule = ({ onBack, cloudData, onUpdateCloud }) => {
-            const [valA, setValA] = useState(0);
-            const [valB, setValB] = useState(0);
-            const [gate, setGate] = useState('AND');
-            const logs = cloudData?.labLogs || [];
+        const ChallengeModule = ({ onBack }) => {
+            const [level, setLevel] = useState('簡單');
+            const [currentQ, setCurrentQ] = useState(null);
+            const [stats, setStats] = useState({ total: 0, correct: 0 });
+            const [feedback, setFeedback] = useState(null);
+            const [hint, setHint] = useState(null);
 
-            const calculate = () => {
-                switch(gate) {
-                    case 'AND': return valA & valB;
-                    case 'OR': return valA | valB;
-                    case 'NOT': return valA === 0 ? 1 : 0;
-                    case 'XOR': return valA ^ valB;
-                    case 'NAND': return (valA & valB) === 0 ? 1 : 0;
-                    default: return 0;
+            const generateQuestion = (lvl) => {
+                setFeedback(null); setHint(null);
+                const a = Math.round(Math.random());
+                const b = Math.round(Math.random());
+                const c = Math.round(Math.random());
+                
+                if (lvl === '簡單') {
+                    const gates = ['AND', 'OR', 'XOR'];
+                    const gate = gates[Math.floor(Math.random() * gates.length)];
+                    let ans;
+                    if(gate === 'AND') ans = a & b;
+                    else if(gate === 'OR') ans = a | b;
+                    else ans = a ^ b;
+                    setCurrentQ({ title: `${a} ${gate} ${b}`, ans, desc: `這是一個基礎的 ${gate} 運算。`, gate });
+                } else if (lvl === '普通') {
+                    const ans = !((a & b) | c) ? 1 : 0;
+                    setCurrentQ({ title: `NOT ( (${a} AND ${b}) OR ${c} )`, ans, desc: "結合了 AND、OR 與 NOT 運算。", gate: "MIX" });
+                } else {
+                    const ans = (a ^ b) & (b | !c) ? 1 : 0;
+                    setCurrentQ({ title: `(${a} XOR ${b}) AND (${b} OR NOT ${c})`, ans, desc: "多級邏輯複合電路，請細心計算。", gate: "MIX" });
                 }
             };
 
-            const output = calculate();
+            useEffect(() => generateQuestion(level), [level]);
 
-            const saveRecord = () => {
-                const newLog = { a: valA, b: valB, gate, out: output, time: new Date().toLocaleTimeString() };
-                onUpdateCloud({ labLogs: [newLog, ...logs].slice(0, 10) });
+            const handleAns = (val) => {
+                if (feedback) return;
+                const isCorrect = val === currentQ.ans;
+                setStats(s => ({ total: s.total + 1, correct: s.correct + (isCorrect ? 1 : 0) }));
+                if (isCorrect) {
+                    setFeedback({ status: 'correct', msg: '讚賞！您的邏輯思維非常清晰！', detail: `正確答案為 ${currentQ.ans}。詳解：${currentQ.desc}` });
+                } else {
+                    setFeedback({ status: 'wrong', msg: '加油！失敗是成功的之母。', detail: `正確答案應為 ${currentQ.ans}。詳解：${currentQ.desc}` });
+                }
+            };
+
+            const getHint = () => {
+                const info = { 'AND': 'AND (與門)：只有當 A 和 B 兩者都為 1 時，結果才會是 1。', 'OR': 'OR (或門)：只要 A 或 B 其中一個為 1，結果就是 1。', 'XOR': 'XOR (異或門)：當 A 和 B 不同時，結果為 1；相同則為 0。', 'NOT': 'NOT (非門)：將輸入訊號反轉，0 變 1，1 變 0。', 'MIX': '提示：依照括號優先原則，先算內層邏輯門。' };
+                setHint(info[currentQ.gate] || info['MIX']);
             };
 
             return (
-                <div className="flex flex-col h-screen bg-slate-900 text-white">
-                    <div className="p-4 bg-slate-800 flex items-center justify-between">
-                        <button onClick={onBack} className="p-2 hover:bg-slate-700 rounded-full flex items-center gap-2 font-bold"><Icon name="ArrowLeft" size={20} /> 返回</button>
-                        <h2 className="font-black text-xl tracking-tighter">LogicLab 實驗室</h2>
-                        <div className="w-10"></div>
-                    </div>
-                    <div className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden">
-                        <div className="bg-slate-800 p-8 rounded-[2rem] border border-slate-700 flex flex-col items-center shadow-2xl">
-                            <h3 className="text-sky-400 font-bold mb-8 uppercase tracking-widest text-sm">邏輯閘動態模擬</h3>
-                            <div className="flex gap-4 mb-8">
-                                <button onClick={() => setValA(valA === 0 ? 1 : 0)} className={`w-20 py-4 rounded-xl font-bold border-2 transition-all ${valA ? 'bg-red-500 border-white' : 'bg-slate-700 border-slate-600'}`}>A = {valA}</button>
-                                <button onClick={() => setValB(valB === 0 ? 1 : 0)} className={`w-20 py-4 rounded-xl font-bold border-2 transition-all ${valB ? 'bg-red-500 border-white' : 'bg-slate-700 border-slate-600'}`}>B = {valB}</button>
-                            </div>
-                            <select value={gate} onChange={(e) => setGate(e.target.value)} className="w-full p-4 bg-slate-900 border border-sky-500 rounded-xl mb-8 outline-none text-sky-400 font-bold">
-                                <option>AND</option><option>OR</option><option>NOT</option><option>XOR</option><option>NAND</option>
-                            </select>
-                            <div className={`w-24 h-24 rounded-full border-4 mb-6 transition-all duration-500 ${output ? 'bg-yellow-400 shadow-[0_0_50px_rgba(250,204,21,0.6)] border-white' : 'bg-slate-950 border-slate-700'}`} />
-                            <div className="text-3xl font-black">輸出 OUT: <span className="text-yellow-400">{output}</span></div>
-                            <button onClick={saveRecord} className="mt-10 w-full py-4 bg-emerald-600 rounded-xl font-bold hover:bg-emerald-500 shadow-xl transition-all">儲存日誌</button>
+                <div className="min-h-screen bg-slate-900 text-white">
+                    <nav className="p-4 border-b border-slate-800 flex items-center justify-between glass-morphism sticky top-0 z-50">
+                        <button onClick={onBack} className="p-2 flex items-center gap-2 text-emerald-400 font-bold"><Icon name="ArrowLeft"/> 返回</button>
+                        <div className="flex gap-4 text-xs font-bold text-slate-400">
+                            <div>總題數: {stats.total}</div>
+                            <div className="text-emerald-400">正確: {stats.correct}</div>
+                            <div className="text-sky-400">正確率: {stats.total ? Math.round(stats.correct/stats.total*100) : 0}%</div>
                         </div>
-                        <div className="lg:col-span-2 bg-white rounded-[2rem] p-6 text-slate-800 flex flex-col overflow-hidden shadow-2xl">
-                            <h3 className="font-black text-lg mb-4">歷史數據</h3>
-                            <div className="flex-1 overflow-y-auto border rounded-2xl">
-                                <table className="w-full text-center">
-                                    <thead className="bg-slate-50 sticky top-0 border-b">
-                                        <tr><th className="p-3">A</th><th className="p-3">B</th><th className="p-3 text-sky-600">Gate</th><th className="p-3">Out</th><th className="p-3">時間</th></tr>
+                    </nav>
+                    <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-8">
+                        <div className="flex justify-center gap-2">
+                            {['簡單', '普通', '困難'].map(l => (
+                                <button key={l} onClick={() => setLevel(l)} className={`px-6 py-2 rounded-xl font-bold transition ${level===l?'bg-emerald-600 text-white shadow-lg':'bg-slate-800 text-slate-500'}`}>{l}</button>
+                            ))}
+                        </div>
+                        <div className="bg-slate-800 p-8 sm:p-12 rounded-[3rem] text-center space-y-8 shadow-2xl relative overflow-hidden">
+                            <div className="text-slate-500 font-bold text-sm tracking-widest uppercase">挑戰題目</div>
+                            <h3 className="text-4xl sm:text-5xl font-black italic text-emerald-400 tracking-tighter">{currentQ?.title} = ?</h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                {[0, 1].map(v => (
+                                    <button key={v} onClick={() => handleAns(v)} className="py-8 bg-slate-700 rounded-3xl text-4xl font-black hover:bg-emerald-600 transition-all border-4 border-transparent hover:border-emerald-400">{v}</button>
+                                ))}
+                            </div>
+                            <div className="flex justify-between items-center pt-4">
+                                <button onClick={() => generateQuestion(level)} className="text-slate-400 font-bold flex items-center gap-1 hover:text-white transition"><Icon name="RotateCcw" size={16}/> 重製</button>
+                                <button onClick={getHint} className="bg-emerald-600/20 text-emerald-400 px-6 py-2 rounded-full font-bold border border-emerald-600/30 hover:bg-emerald-600/30 transition">提示按鈕</button>
+                            </div>
+                            {hint && <div className="p-4 bg-emerald-950/50 border border-emerald-800 rounded-2xl text-emerald-200 text-sm animate-pulse">{hint}</div>}
+                        </div>
+                        {feedback && (
+                            <div className={`p-8 rounded-[2rem] shadow-xl animate-bounce-in ${feedback.status==='correct'?'bg-emerald-50 text-emerald-800':'bg-rose-50 text-rose-800'}`}>
+                                <h4 className="text-xl font-black mb-2 flex items-center gap-2">
+                                    <Icon name={feedback.status==='correct'?'Trophy':'AlertCircle'} /> {feedback.msg}
+                                </h4>
+                                <p className="text-sm leading-relaxed opacity-80">{feedback.detail}</p>
+                                <button onClick={() => generateQuestion(level)} className="mt-4 px-6 py-2 bg-slate-900 text-white rounded-full text-sm font-bold">下一題挑戰</button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 4. 數位邏輯模擬器模組
+        // ==========================================
+        const SimulatorModule = ({ onBack }) => {
+            const [a, setA] = useState(0);
+            const [b, setB] = useState(0);
+            const [gate, setGate] = useState('AND');
+            const [logs, setLogs] = useState(() => JSON.parse(localStorage.getItem('lab_logs') || '[]'));
+
+            const result = useMemo(() => {
+                if (gate === 'AND') return a & b;
+                if (gate === 'OR') return a | b;
+                if (gate === 'NOT') return a ? 0 : 1;
+                if (gate === 'XOR') return a ^ b;
+                if (gate === 'NAND') return !(a & b) ? 1 : 0;
+                if (gate === 'NOR') return !(a | b) ? 1 : 0;
+                return 0;
+            }, [a, b, gate]);
+
+            const saveLog = () => {
+                const newLog = { id: Date.now(), a, b, gate, out: result, time: new Date().toLocaleTimeString() };
+                const updated = [newLog, ...logs];
+                setLogs(updated);
+                localStorage.setItem('lab_logs', JSON.stringify(updated));
+            };
+
+            return (
+                <div className="min-h-screen bg-white">
+                    <nav className="p-4 border-b flex items-center justify-between sticky top-0 bg-white z-50">
+                        <button onClick={onBack} className="p-2 flex items-center gap-2 text-orange-600 font-bold"><Icon name="ArrowLeft"/> 返回</button>
+                        <h2 className="font-black text-xl">數位邏輯模擬器</h2>
+                        <div className="w-10"></div>
+                    </nav>
+                    <div className="max-w-4xl mx-auto p-4 sm:p-8 grid md:grid-cols-2 gap-8">
+                        <div className="bg-slate-50 p-8 rounded-[3rem] space-y-8 shadow-inner">
+                            <div className="flex justify-center gap-6">
+                                <div className="text-center">
+                                    <button onClick={() => setA(a ? 0 : 1)} className={`w-20 h-20 rounded-3xl font-black text-3xl transition-all shadow-xl ${a?'bg-orange-500 text-white':'bg-white text-slate-300'}`}>{a}</button>
+                                    <p className="mt-2 font-bold text-slate-400">輸入 A</p>
+                                </div>
+                                <div className="text-center">
+                                    <button onClick={() => setB(b ? 0 : 1)} className={`w-20 h-20 rounded-3xl font-black text-3xl transition-all shadow-xl ${b?'bg-orange-500 text-white':'bg-white text-slate-300'}`}>{b}</button>
+                                    <p className="mt-2 font-bold text-slate-400">輸入 B</p>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="block text-center font-bold text-slate-500 uppercase text-xs">選擇邏輯閘</label>
+                                <select value={gate} onChange={e => setGate(e.target.value)} className="w-full p-4 bg-white rounded-2xl border-2 border-slate-200 font-black text-center text-lg outline-none focus:border-orange-500 transition">
+                                    {['AND', 'OR', 'NOT', 'XOR', 'NAND', 'NOR'].map(g => <option key={g} value={g}>{g} 閘</option>)}
+                                </select>
+                            </div>
+                            <div className="flex flex-col items-center justify-center space-y-4">
+                                <div className={`w-32 h-32 rounded-full border-8 flex items-center justify-center transition-all duration-500 ${result?'bg-yellow-400 border-yellow-200 shadow-[0_0_50px_rgba(250,204,21,0.6)]':'bg-slate-800 border-slate-700'}`}>
+                                    <Icon name="Lightbulb" size={64} className={result?'text-white animate-pulse':'text-slate-600'}/>
+                                </div>
+                                <h3 className="text-2xl font-black text-slate-800">輸出結果: {result}</h3>
+                                <button onClick={saveLog} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black shadow-lg">儲存實驗紀錄</button>
+                            </div>
+                        </div>
+                        <div className="space-y-4 flex flex-col h-full">
+                            <h3 className="font-black text-xl flex items-center gap-2"><Icon name="ClipboardList"/> 實驗日誌</h3>
+                            <div className="flex-1 bg-white border rounded-3xl overflow-hidden shadow-sm overflow-y-auto no-scrollbar max-h-[500px]">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-slate-50 text-slate-400 sticky top-0">
+                                        <tr><th className="p-4 text-left">時間</th><th className="p-4">輸入</th><th className="p-4">邏輯閘</th><th className="p-4">輸出</th></tr>
                                     </thead>
-                                    <tbody>
-                                        {logs.map((l, i) => (
-                                            <tr key={i} className="border-b">
-                                                <td className="p-3">{l.a}</td><td className="p-3">{l.b}</td>
-                                                <td className="p-3 font-bold text-sky-600">{l.gate}</td>
-                                                <td className="p-3 font-black">{l.out}</td>
-                                                <td className="p-3 text-[10px] text-slate-400">{l.time}</td>
+                                    <tbody className="divide-y">
+                                        {logs.map(l => (
+                                            <tr key={l.id} className="hover:bg-slate-50 transition">
+                                                <td className="p-4 text-slate-400">{l.time}</td>
+                                                <td className="p-4 text-center font-bold">({l.a},{l.b})</td>
+                                                <td className="p-4 text-center font-black text-orange-600">{l.gate}</td>
+                                                <td className="p-4 text-center"><span className={`px-3 py-1 rounded-full font-bold ${l.out?'bg-yellow-100 text-yellow-700':'bg-slate-100 text-slate-700'}`}>{l.out}</span></td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -267,218 +346,84 @@
         };
 
         // ==========================================
-        // 3. 邏輯挑戰島 (Challenge Island)
+        // 5. 物理畫布模組 (簡化實作邏輯)
         // ==========================================
-        const ChallengeModule = ({ onBack, cloudData, onUpdateCloud }) => {
-            const [level, setLevel] = useState(null);
-            const stats = cloudData?.challengeStats || { total: 0, correct: 0 };
-            const [currentQ, setCurrentQ] = useState(null);
-            const [feedback, setFeedback] = useState(null);
-            const [showHint, setShowHint] = useState(false);
-
-            const generateQ = (lvl) => {
-                setFeedback(null);
-                setShowHint(false);
-                const a = Math.round(Math.random());
-                const b = Math.round(Math.random());
-                let q = {};
-                if (lvl === 'Easy') q = { formula: `A AND B`, params: `A=${a}, B=${b}`, ans: a & b, hint: "AND：兩者皆為 1 才輸出 1" };
-                else if (lvl === 'Medium') q = { formula: `A XOR B`, params: `A=${a}, B=${b}`, ans: a ^ b, hint: "XOR：兩者不同時輸出 1" };
-                else q = { formula: `NAND (A, B)`, params: `A=${a}, B=${b}`, ans: (a & b) === 0 ? 1 : 0, hint: "NAND：與 AND 的結果完全相反" };
-                setCurrentQ(q);
-            };
-
-            const checkAns = (val) => {
-                const isCorrect = val === currentQ.ans;
-                const newStats = { total: stats.total + 1, correct: isCorrect ? stats.correct + 1 : stats.correct };
-                setFeedback(isCorrect ? "CORRECT" : "WRONG");
-                onUpdateCloud({ challengeStats: newStats });
-                setTimeout(() => generateQ(level), 1200);
-            };
-
-            if (!level) return (
-                <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
-                    <h2 className="text-4xl font-black text-white mb-12 italic">挑戰等級</h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full max-w-4xl">
-                        {['Easy', 'Medium', 'Hard'].map((l, i) => (
-                            <div key={l} onClick={() => {setLevel(l); generateQ(l);}} className="bg-slate-800 p-10 rounded-[2.5rem] border-4 border-slate-700 cursor-pointer hover:border-emerald-500 transition-all text-center">
-                                <div className="text-6xl mb-6">{['🟢','🔵','🔴'][i]}</div>
-                                <h3 className="text-2xl font-black text-white uppercase">{l}</h3>
-                            </div>
-                        ))}
-                    </div>
-                    <button onClick={onBack} className="mt-12 text-slate-500 font-bold">← 返回</button>
-                </div>
-            );
-
-            return (
-                <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center">
-                    <div className="w-full max-w-5xl flex justify-between items-center mb-8">
-                        <button onClick={() => setLevel(null)} className="bg-white px-6 py-2 rounded-xl shadow border font-bold">返回難度</button>
-                        <div className="bg-white px-6 py-2 rounded-xl border-2 border-emerald-500 font-black text-emerald-600 shadow-sm">
-                            勝率: {stats.total === 0 ? 0 : Math.round(stats.correct/stats.total*100)}%
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full max-w-5xl">
-                        <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl border-4 flex flex-col items-center justify-center relative min-h-[400px]">
-                            {feedback && (
-                                <div className={`absolute inset-0 z-10 rounded-[3.5rem] flex flex-col items-center justify-center text-6xl font-black ${feedback === 'CORRECT' ? 'bg-emerald-500/90 text-white' : 'bg-rose-500/90 text-white'}`}>
-                                    {feedback === 'CORRECT' ? '🎉 CORRECT' : '❌ WRONG'}
-                                </div>
-                            )}
-                            <h2 className="text-5xl font-black mb-6">{currentQ?.formula}</h2>
-                            <p className="text-3xl font-mono text-blue-600 font-bold mb-10">{currentQ?.params}</p>
-                            {showHint && <div className="p-4 bg-amber-50 text-amber-700 rounded-xl mb-4 text-sm font-bold">💡 {currentQ?.hint}</div>}
-                            {!showHint && <button onClick={() => setShowHint(true)} className="text-slate-400 underline text-sm">需要提示嗎？</button>}
-                        </div>
-                        <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl border-4 flex flex-col justify-center">
-                            <p className="text-center text-slate-400 font-bold mb-10 uppercase tracking-widest">選擇結果 Q</p>
-                            <div className="grid grid-cols-2 gap-8">
-                                {[0, 1].map(v => (
-                                    <button key={v} onClick={() => checkAns(v)} className="py-12 bg-slate-50 border-4 rounded-[2.5rem] text-6xl font-black hover:border-blue-500 transition-all">{v}</button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        // ==========================================
-        // 4. 電路實作區 (Circuit Simulator)
-        // ==========================================
-        const CircuitSimulatorModule = ({ onBack }) => {
+        const PhysicsModule = ({ onBack }) => {
             const [components, setComponents] = useState([]);
             const [wires, setWires] = useState([]);
-            const [isSimulating, setIsSimulating] = useState(false);
-            const [tool, setTool] = useState('drag');
-            const [activeWireStart, setActiveWireStart] = useState(null);
-            const [draggingComp, setDraggingComp] = useState(null);
+            const [isWireMode, setIsWireMode] = useState(false);
+            const [isProbeMode, setIsProbeMode] = useState(false);
+            const [activeNode, setActiveNode] = useState(null);
+            const [hoverData, setHoverData] = useState(null);
             const boardRef = useRef(null);
 
             const addComp = (type) => {
-                const labels = { battery: '電池', bulb: '燈泡', switch: '開關' };
-                const id = Date.now();
-                setComponents([...components, {
-                    id,
-                    type,
-                    label: labels[type],
-                    x: 150 + Math.random() * 50,
-                    y: 150 + Math.random() * 50,
-                    state: type === 'switch' ? false : true,
-                    powered: false
-                }]);
+                const names = { battery: '電池 (9V)', resistor: '電阻 (1kΩ)', led: 'LED 燈', switch: '開關' };
+                const values = { battery: 9, resistor: 1000, led: 2, switch: 0 };
+                setComponents([...components, { id: Date.now(), type, name: names[type], x: 50, y: 50, value: values[type], state: false }]);
             };
 
-            const deleteWire = (id) => setWires(wires.filter(w => w.id !== id));
-            const deleteComp = (id) => {
-                setComponents(components.filter(c => c.id !== id));
-                setWires(wires.filter(w => w.fromComp !== id && w.toComp !== id));
+            const handleMove = (id, e) => {
+                if (isWireMode || isProbeMode) return;
+                const touch = e.touches ? e.touches[0] : e;
+                const rect = boardRef.current.getBoundingClientRect();
+                setComponents(prev => prev.map(c => c.id === id ? { ...c, x: touch.clientX - rect.left - 40, y: touch.clientY - rect.top - 40 } : c));
             };
 
-            useEffect(() => {
-                if (!isSimulating) {
-                    setComponents(prev => prev.map(c => ({ ...c, powered: false })));
-                    return;
-                }
-                const hasBattery = components.some(c => c.type === 'battery');
-                const allSwitchesOn = components.filter(c => c.type === 'switch').every(s => s.state);
-                const hasConnection = wires.length > 0;
-                setComponents(prev => prev.map(c => ({
-                    ...c,
-                    powered: hasBattery && allSwitchesOn && hasConnection
-                })));
-            }, [isSimulating, wires, components]);
-
-            const handleNodeClick = (compId, side) => {
-                if (tool !== 'wire') return;
-                if (!activeWireStart) {
-                    setActiveWireStart({ compId, side });
-                } else {
-                    if (activeWireStart.compId !== compId || activeWireStart.side !== side) {
-                        setWires([...wires, {
-                            id: Date.now(),
-                            fromComp: activeWireStart.compId,
-                            fromSide: activeWireStart.side,
-                            toComp: compId,
-                            toSide: side
-                        }]);
-                    }
-                    setActiveWireStart(null);
-                }
-            };
-
-            const handleMouseMove = (e) => {
-                if (draggingComp && tool === 'drag') {
-                    const rect = boardRef.current.getBoundingClientRect();
-                    setComponents(prev => prev.map(c => 
-                        c.id === draggingComp ? { ...c, x: e.clientX - rect.left - 48, y: e.clientY - rect.top - 48 } : c
-                    ));
-                }
+            const handleValueEdit = (id, e) => {
+                if (!e.shiftKey) return;
+                const newVal = prompt("請輸入新的物理數值 (V 或 Ω):");
+                if (newVal) setComponents(prev => prev.map(c => c.id === id ? { ...c, value: parseFloat(newVal) } : c));
             };
 
             return (
-                <div className="flex flex-col h-screen bg-zinc-950 text-white overflow-hidden">
-                    <div className="p-4 bg-zinc-900 border-b border-zinc-800 flex justify-between items-center">
-                        <div className="flex items-center gap-4">
-                            <button onClick={onBack} className="p-2 hover:bg-zinc-800 rounded-full flex items-center gap-2 font-bold"><Icon name="ArrowLeft" size={20} /> 返回</button>
-                            <h2 className="font-black text-xl flex items-center gap-2 text-orange-500"><Icon name="CircuitBoard" /> 電路實作區</h2>
-                        </div>
+                <div className="h-screen flex flex-col bg-zinc-900 overflow-hidden">
+                    <nav className="p-4 border-b border-zinc-800 flex items-center justify-between glass-morphism sticky top-0 z-50">
+                        <button onClick={onBack} className="p-2 flex items-center gap-2 text-zinc-400 font-bold hover:text-white transition"><Icon name="ArrowLeft"/> 返回</button>
                         <div className="flex gap-2">
-                             <button onClick={() => { setComponents([]); setWires([]); setIsSimulating(false); }} className="px-4 py-2 bg-zinc-800 rounded-xl text-xs font-bold text-zinc-400 hover:text-white">清空</button>
-                             <button onClick={() => setIsSimulating(!isSimulating)} className={`px-8 py-2 rounded-2xl flex items-center gap-2 font-bold shadow-xl transition-all ${isSimulating ? 'bg-rose-500 animate-pulse' : 'bg-emerald-600'}`}>
-                                <Icon name={isSimulating ? "Square" : "Play"} size={16} /> {isSimulating ? '停止' : '啟動'}
-                            </button>
+                            <button onClick={() => {setIsWireMode(!isWireMode); setIsProbeMode(false);}} className={`px-4 py-2 rounded-xl text-xs font-bold transition ${isWireMode?'bg-blue-600 text-white':'bg-zinc-800 text-zinc-500'}`}>自由佈線</button>
+                            <button onClick={() => {setIsProbeMode(!isProbeMode); setIsWireMode(false);}} className={`px-4 py-2 rounded-xl text-xs font-bold transition ${isProbeMode?'bg-emerald-600 text-white':'bg-zinc-800 text-zinc-500'}`}>🔍 數學探針</button>
                         </div>
-                    </div>
+                    </nav>
                     <div className="flex-1 flex overflow-hidden">
-                        <div className="w-64 bg-zinc-900 border-r border-zinc-800 p-6 flex flex-col gap-4 overflow-y-auto">
-                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">零件</p>
-                            {['battery', 'bulb', 'switch'].map(t => (
-                                <button key={t} onClick={() => addComp(t)} className="flex items-center gap-4 p-4 bg-zinc-800/50 rounded-2xl border border-zinc-700 hover:bg-zinc-700">
-                                    <Icon name={t === 'battery' ? 'Zap' : t === 'bulb' ? 'Lightbulb' : 'Power'} className={t === 'battery' ? 'text-orange-500' : t === 'bulb' ? 'text-yellow-400' : 'text-rose-500'} />
-                                    <span className="text-xs font-black uppercase tracking-wider">{t === 'battery' ? '電池' : t === 'bulb' ? '燈泡' : '開關'}</span>
+                        <div className="w-20 sm:w-64 bg-zinc-950 border-r border-zinc-800 p-4 flex flex-col gap-4 overflow-y-auto no-scrollbar">
+                            {['battery', 'resistor', 'led', 'switch'].map(t => (
+                                <button key={t} onClick={() => addComp(t)} className="p-4 bg-zinc-900 rounded-2xl flex flex-col items-center gap-2 border border-zinc-800 hover:border-blue-500 transition group">
+                                    <Icon name={t==='battery'?'Zap':t==='resistor'?'Activity':t==='led'?'Lightbulb':'Power'} className="text-zinc-500 group-hover:text-blue-400" />
+                                    <span className="text-[10px] text-zinc-600 font-bold uppercase hidden sm:block">新增{t}</span>
                                 </button>
                             ))}
-                            <div className="h-px bg-zinc-800 my-4" />
-                            <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">工具</p>
-                            <button onClick={() => setTool('drag')} className={`flex items-center gap-4 p-4 rounded-2xl border ${tool === 'drag' ? 'bg-blue-600 border-blue-400' : 'bg-zinc-800'}`}>
-                                <Icon name="MousePointer2" /> <span className="text-xs font-black uppercase">移動</span>
-                            </button>
-                            <button onClick={() => setTool('wire')} className={`flex items-center gap-4 p-4 rounded-2xl border ${tool === 'wire' ? 'bg-orange-600 border-orange-400' : 'bg-zinc-800'}`}>
-                                <Icon name="Scissors" /> <span className="text-xs font-black uppercase">連線</span>
-                            </button>
                         </div>
-                        <div ref={boardRef} onMouseMove={handleMouseMove} onMouseUp={() => setDraggingComp(null)} className="flex-1 relative bg-zinc-950 bg-[radial-gradient(#333_1px,transparent_1px)] [background-size:40px_40px]">
+                        <div ref={boardRef} className={`flex-1 relative overflow-hidden bg-[radial-gradient(#333_1px,transparent_1px)] [background-size:30px_30px] ${isProbeMode?'cursor-crosshair':'cursor-default'}`}>
+                            {isProbeMode && hoverData && (
+                                <div className="absolute top-4 left-4 p-4 bg-emerald-900/80 text-emerald-100 rounded-2xl border border-emerald-500 z-50 backdrop-blur pointer-events-none">
+                                    <p className="text-xs font-black uppercase mb-1">物理數據分析</p>
+                                    <div className="text-xl font-mono">電壓: {hoverData.v}V</div>
+                                    <div className="text-xl font-mono">電流: {hoverData.i}mA</div>
+                                </div>
+                            )}
                             <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                                {wires.map(wire => {
-                                    const from = components.find(c => c.id === wire.fromComp);
-                                    const to = components.find(c => c.id === wire.toComp);
-                                    if (!from || !to) return null;
-                                    const x1 = wire.fromSide === 'L' ? from.x : from.x + 96;
-                                    const y1 = from.y + 48;
-                                    const x2 = wire.toSide === 'L' ? to.x : to.x + 96;
-                                    const y2 = to.y + 48;
-                                    return (
-                                        <g key={wire.id} className="pointer-events-auto cursor-pointer group" onClick={() => tool === 'wire' && deleteWire(wire.id)}>
-                                            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={isSimulating && from.powered ? "#fbbf24" : "#52525b"} strokeWidth="6" strokeLinecap="round" />
-                                            <text x={(x1+x2)/2} y={(y1+y2)/2} fill="#ef4444" className="opacity-0 group-hover:opacity-100 text-[10px] font-bold" textAnchor="middle">刪除</text>
-                                        </g>
-                                    );
+                                {wires.map(w => {
+                                    const f = components.find(c => c.id === w.f);
+                                    const t = components.find(c => c.id === w.t);
+                                    if (!f || !t) return null;
+                                    return <line key={w.id} x1={f.x+40} y1={f.y+40} x2={t.x+40} y2={t.y+40} stroke="#3b82f6" strokeWidth="4" />;
                                 })}
                             </svg>
-                            {components.map(comp => (
-                                <div key={comp.id} style={{ left: comp.x, top: comp.y }} onMouseDown={() => tool === 'drag' && setDraggingComp(comp.id)} className={`absolute w-24 h-24 bg-zinc-900 rounded-[2rem] border-2 flex flex-col items-center justify-center z-20 shadow-lg ${comp.powered && comp.type === 'bulb' ? 'border-yellow-400 shadow-[0_0_50px_rgba(250,204,21,0.4)]' : 'border-zinc-800'}`}>
-                                    <Icon name={comp.type === 'battery' ? 'Zap' : comp.type === 'bulb' ? 'Lightbulb' : 'Power'} size={36} className={comp.powered && comp.type === 'bulb' ? 'text-yellow-400 animate-pulse' : 'text-zinc-600'} />
-                                    <span className="text-[10px] font-black mt-2 text-zinc-500 uppercase">{comp.label}</span>
-                                    <div onClick={(e) => { e.stopPropagation(); handleNodeClick(comp.id, 'L'); }} className={`absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-zinc-900 z-30 transition-all ${activeWireStart?.compId === comp.id && activeWireStart?.side === 'L' ? 'bg-orange-500 scale-125' : 'bg-yellow-600 hover:bg-yellow-400 cursor-pointer'}`} />
-                                    <div onClick={(e) => { e.stopPropagation(); handleNodeClick(comp.id, 'R'); }} className={`absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-zinc-900 z-30 transition-all ${activeWireStart?.compId === comp.id && activeWireStart?.side === 'R' ? 'bg-orange-500 scale-125' : 'bg-yellow-600 hover:bg-yellow-400 cursor-pointer'}`} />
-                                    {comp.type === 'switch' && (
-                                        <div onClick={(e) => { e.stopPropagation(); setComponents(prev => prev.map(c => c.id === comp.id ? {...c, state: !c.state} : c)) }} className={`mt-2 w-8 h-4 rounded-full p-0.5 cursor-pointer transition-colors ${comp.state ? 'bg-emerald-500' : 'bg-zinc-700'}`}>
-                                            <div className={`w-3 h-3 bg-white rounded-full transition-transform ${comp.state ? 'translate-x-4' : 'translate-x-0'}`} />
-                                        </div>
-                                    )}
-                                    <button onClick={(e) => { e.stopPropagation(); deleteComp(comp.id); }} className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1"><Icon name="Trash2" size={14} /></button>
+                            {components.map(c => (
+                                <div key={c.id} style={{ left: c.x, top: c.y }} 
+                                    onMouseMove={(e) => isProbeMode && setHoverData({ v: (c.value*0.8).toFixed(2), i: (c.value/10).toFixed(1) })}
+                                    onMouseLeave={() => setHoverData(null)}
+                                    onTouchMove={(e) => handleMove(c.id, e)} 
+                                    onMouseDown={(e) => handleMove(c.id, e)}
+                                    onClick={(e) => handleValueEdit(c.id, e)}
+                                    className={`absolute w-20 h-20 bg-zinc-900 rounded-2xl border-2 flex flex-col items-center justify-center transition shadow-xl select-none ${isProbeMode?'border-emerald-500':'border-zinc-700 active:border-blue-500 active:scale-95'}`}>
+                                    <Icon name={c.type==='battery'?'Zap':c.type==='resistor'?'Activity':c.type==='led'?'Lightbulb':'Power'} className="text-zinc-500" />
+                                    <span className="text-[10px] text-zinc-600 mt-1 font-black">{c.name}</span>
+                                    <div className="text-[8px] text-blue-500 font-mono">{c.value} {c.type==='resistor'?'Ω':'V'}</div>
+                                    {c.type === 'switch' && <div className={`w-6 h-3 rounded-full mt-1 ${c.state?'bg-emerald-500':'bg-zinc-700'}`} onClick={() => setComponents(prev => prev.map(cp => cp.id===c.id?{...cp, state:!cp.state}:cp))}/>}
+                                    <button onClick={() => setComponents(components.filter(cp => cp.id !== c.id))} className="absolute -top-2 -right-2 bg-rose-500 text-white p-1 rounded-full"><Icon name="X" size={10}/></button>
+                                    <div onClick={() => isWireMode && (activeNode ? (setWires([...wires, {id:Date.now(), f:activeNode, t:c.id}]), setActiveNode(null)) : setActiveNode(c.id))} className={`absolute -bottom-2 w-4 h-4 rounded-full shadow-lg cursor-pointer ${activeNode===c.id?'bg-blue-500 animate-ping':'bg-zinc-600'}`} />
                                 </div>
                             ))}
                         </div>
@@ -488,58 +433,49 @@
         };
 
         // ==========================================
-        // 主入口 (App)
+        // 主選單
         // ==========================================
         const App = () => {
+            const [user, setUser] = useState(null);
             const [view, setView] = useState('menu');
-            const [cloudData, setCloudData] = useState(() => {
-                const local = localStorage.getItem('logiclab_data');
-                return local ? JSON.parse(local) : {};
-            });
 
-            const updateCloudData = (newData) => {
-                const updated = { ...cloudData, ...newData };
-                setCloudData(updated);
-                localStorage.setItem('logiclab_data', JSON.stringify(updated));
-            };
+            if (!user) return <AuthModule onLoginSuccess={setUser} />;
 
             const menuItems = [
-                { id: 'encyclopedia', title: '零件百科', desc: '圖鑑導覽與互動筆記', icon: 'Book', color: 'bg-blue-600' },
-                { id: 'lab', title: 'LogicLab v2.0', desc: '數位邏輯驗證與數據同步', icon: 'FileJson', color: 'bg-sky-500' },
-                { id: 'challenge', title: '邏輯挑戰島', desc: '闖關練習與智慧提示', icon: 'Trophy', color: 'bg-emerald-600' },
-                { id: 'circuit', title: '電路實作區', desc: '零件佈置與電線繪製模擬', icon: 'CircuitBoard', color: 'bg-orange-500' }
+                { id: 'encyclopedia', title: '元件百科', icon: 'BookOpen', color: 'bg-blue-600', desc: '探索基礎電子零件的奧秘與應用。' },
+                { id: 'challenge', title: '挑戰島', icon: 'Trophy', color: 'bg-emerald-600', desc: '邏輯闖關挑戰，磨練您的數位思維。' },
+                { id: 'simulator', title: '邏輯模擬', icon: 'Cpu', color: 'bg-orange-600', desc: '即時切換邏輯訊號，觀察電位變化。' },
+                { id: 'physics', title: '物理畫布', icon: 'Palette', color: 'bg-zinc-800', desc: '自由畫布實驗室，模擬真實物理數據。' }
             ];
 
-            if (view === 'encyclopedia') return <EncyclopediaModule cloudData={cloudData} onUpdateCloud={updateCloudData} onBack={() => setView('menu')} />;
-            if (view === 'lab') return <LabModule cloudData={cloudData} onUpdateCloud={updateCloudData} onBack={() => setView('menu')} />;
-            if (view === 'challenge') return <ChallengeModule cloudData={cloudData} onUpdateCloud={updateCloudData} onBack={() => setView('menu')} />;
-            if (view === 'circuit') return <CircuitSimulatorModule onBack={() => setView('menu')} />;
-
             return (
-                <div className="min-h-screen bg-slate-50 flex flex-col p-6 sm:p-12">
-                    <header className="max-w-6xl w-full mx-auto flex justify-between items-center mb-20">
-                        <div>
-                            <h1 className="text-3xl font-black text-slate-800 tracking-tighter italic">LogicLab</h1>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">學習中心 (靜態版)</p>
-                        </div>
-                    </header>
-                    <div className="max-w-6xl w-full mx-auto text-center flex-1 flex flex-col justify-center">
-                        <div className="mb-20">
-                            <h2 className="text-5xl sm:text-7xl font-black text-slate-900 mb-6 tracking-tight">電路模擬學習中心</h2>
-                            <p className="text-slate-400 text-lg max-w-2xl mx-auto">互動式電子零件百科、數位邏輯閘模擬與電路設計畫布。</p>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-                            {menuItems.map(item => (
-                                <div key={item.id} onClick={() => setView(item.id)} className="bg-white p-10 rounded-[3rem] shadow-xl border-4 border-transparent hover:border-blue-500 transition-all cursor-pointer hover:-translate-y-4 group">
-                                    <div className={`${item.color} text-white p-7 rounded-[2rem] inline-block mb-8 shadow-2xl group-hover:rotate-12 transition-transform`}>
-                                        <Icon name={item.icon} size={40} />
-                                    </div>
-                                    <h3 className="text-2xl font-black text-slate-800 mb-3 tracking-tight">{item.title}</h3>
-                                    <p className="text-slate-400 text-sm">{item.desc}</p>
+                <div className="min-h-screen">
+                    {view === 'menu' && (
+                        <div className="p-4 sm:p-12 animate-in fade-in duration-700">
+                            <header className="flex justify-between items-center mb-12 max-w-6xl mx-auto">
+                                <div>
+                                    <h1 className="text-4xl font-black italic text-slate-900 tracking-tighter">LogicLab</h1>
+                                    <p className="text-slate-400 font-bold text-xs">歡迎回來, {user.userId}</p>
                                 </div>
-                            ))}
+                                <button onClick={() => setUser(null)} className="p-3 bg-white rounded-2xl shadow-sm text-slate-400 hover:text-rose-500 transition"><Icon name="LogOut"/></button>
+                            </header>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+                                {menuItems.map(item => (
+                                    <div key={item.id} onClick={() => setView(item.id)} className="bg-white p-8 rounded-[3rem] shadow-xl border-4 border-transparent hover:border-blue-500 transition-all cursor-pointer hover:-translate-y-2 group">
+                                        <div className={`${item.color} text-white p-6 rounded-[2rem] inline-block mb-6 shadow-xl group-hover:rotate-6 transition-transform`}>
+                                            <Icon name={item.icon} size={32} />
+                                        </div>
+                                        <h3 className="text-xl font-black text-slate-800 mb-2">{item.title}</h3>
+                                        <p className="text-slate-400 text-sm leading-relaxed">{item.desc}</p>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    )}
+                    {view === 'encyclopedia' && <EncyclopediaModule onBack={() => setView('menu')} />}
+                    {view === 'challenge' && <ChallengeModule onBack={() => setView('menu')} />}
+                    {view === 'simulator' && <SimulatorModule onBack={() => setView('menu')} />}
+                    {view === 'physics' && <PhysicsModule onBack={() => setView('menu')} />}
                 </div>
             );
         };
