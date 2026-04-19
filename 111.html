@@ -28,15 +28,6 @@
             touch-action: none;
         }
 
-        .canvas-container {
-            background-color: #0f172a;
-            background-image: 
-                linear-gradient(var(--grid-color) 1px, transparent 1px),
-                linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
-            background-size: 25px 25px;
-            position: relative;
-        }
-
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
@@ -113,6 +104,14 @@
             const login = (data) => { setUser(data); localStorage.setItem('logiclab_ultra_user', JSON.stringify(data)); setView('lobby'); };
             const logout = () => { setUser(null); localStorage.removeItem('logiclab_ultra_user'); setView('auth'); };
 
+            const handleNavigation = (id) => {
+                if (id === 'external_canvas') {
+                    window.open('https://anna970625anna-collab.github.io/anna970625anna/111.html', '_blank');
+                } else {
+                    setView(id);
+                }
+            };
+
             return (
                 <div className="h-screen w-screen flex flex-col bg-slate-950 text-slate-50 overflow-hidden">
                     {view === 'auth' ? (
@@ -133,7 +132,7 @@
                                 </div>
                             </header>
                             <main className="flex-1 relative overflow-hidden">
-                                {view === 'lobby' && <LobbyView setView={setView} />}
+                                {view === 'lobby' && <LobbyView setView={handleNavigation} />}
                                 {view === 'parts' && <PartsView onBack={() => setView('lobby')} user={user} />}
                                 {view === 'challenge' && <ChallengeView onBack={() => setView('lobby')} />}
                                 {view === 'sim' && <SimulatorView onBack={() => setView('lobby')} />}
@@ -183,28 +182,19 @@
                 { id: 'parts', title: '元件百科', icon: 'book-open', color: 'bg-indigo-500', desc: '探索電子元件的基本構造與實際應用。' },
                 { id: 'challenge', title: '邏輯闖關', icon: 'swords', color: 'bg-rose-500', desc: '透過關卡挑戰提升數位邏輯判斷能力。' },
                 { id: 'sim', title: '數位模擬', icon: 'cpu', color: 'bg-emerald-500', desc: '即時視覺化各種邏輯閘的真值表運算。' },
-                { id: 'external_canvas', title: '專題畫布', icon: 'layout', color: 'bg-teal-500', desc: '前往外部專業級電路繪製環境。', url: 'https://anna970625anna-collab.github.io/anna970625anna/111.html' },
+                { id: 'external_canvas', title: '專題畫布', icon: 'layout', color: 'bg-teal-500', desc: '搭載 MNA 求解器的專業級電路繪製環境。 (外部連結)' },
             ];
-
-            const handleNavigate = (m) => {
-                if (m.url) {
-                    window.open(m.url, '_blank');
-                } else {
-                    setView(m.id);
-                }
-            };
-
             return (
                 <div className="h-full overflow-y-auto p-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 content-start custom-scrollbar">
                     {menu.map(m => (
-                        <div key={m.id} onClick={() => handleNavigate(m)} className="group bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col justify-between cursor-pointer hover:border-white/20 hover:bg-slate-800/50 transition-all">
+                        <div key={m.id} onClick={() => setView(m.id)} className="group bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col justify-between cursor-pointer hover:border-white/20 hover:bg-slate-800/50 transition-all">
                             <div>
                                 <div className={`${m.color} w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg shadow-${m.color.split('-')[1]}-500/20 group-hover:scale-110 transition-transform`}><LucideIcon name={m.icon} size={28} /></div>
                                 <h3 className="mt-12 text-xl font-black text-white">{m.title}</h3>
                                 <p className="mt-3 text-slate-400 text-xs leading-relaxed">{m.desc}</p>
                             </div>
                             <div className="mt-10 text-[10px] font-black text-teal-400 flex items-center gap-2 uppercase tracking-widest group-hover:translate-x-2 transition-transform">
-                                {m.url ? 'Open Link' : 'Initialize'} <LucideIcon name="arrow-right" size={12}/>
+                                {m.id === 'external_canvas' ? 'Open URL' : 'Initialize'} <LucideIcon name={m.id === 'external_canvas' ? 'external-link' : 'arrow-right'} size={12}/>
                             </div>
                         </div>
                     ))}
@@ -212,7 +202,7 @@
             );
         };
 
-        // --- 功能 1: 元件百科 (保留頁碼指示器) ---
+        // --- 功能 1: 元件百科 (含頁碼) ---
         const PartsView = ({ onBack, user }) => {
             const [idx, setIdx] = useState(0);
             const [note, setNote] = useState("");
@@ -235,7 +225,6 @@
                     <button onClick={onBack} className="text-slate-500 font-black text-[10px] uppercase mb-8 hover:text-white transition-colors flex items-center gap-2"><LucideIcon name="chevron-left" size={14}/> Back to Hub</button>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-1 items-start">
                         <div className="bg-slate-900 rounded-[2.5rem] p-10 border border-white/5 flex flex-col shadow-2xl min-h-[550px] relative overflow-hidden">
-                            {/* 頁碼指示器 */}
                             <div className="flex justify-between items-center mb-6">
                                 <div className="px-4 py-1.5 bg-slate-950 border border-white/5 rounded-full text-[10px] font-black text-teal-500 uppercase tracking-widest">
                                     Component {String(idx + 1).padStart(2, '0')} / {String(PARTS_DATA.length).padStart(2, '0')}
@@ -350,12 +339,6 @@
                                     <button onClick={() => generate(diff)} className="px-14 py-4 bg-teal-500 text-slate-950 rounded-2xl font-black text-xs uppercase shadow-lg hover:bg-teal-400 transition-colors">Continue Challenge</button>
                                 </div>
                             )}
-                            <div className="mt-12 flex flex-col items-center">
-                                <button onClick={() => setShowHint(!showHint)} className="flex items-center gap-3 px-8 py-3 rounded-full font-black text-[10px] uppercase bg-slate-800 text-slate-500 hover:text-amber-400">
-                                    <LucideIcon name="lightbulb" size={16}/> {showHint ? 'Hide Hint' : 'Show Hint'}
-                                </button>
-                                {showHint && <div className="mt-6 w-full bg-slate-950/50 border border-amber-500/20 p-6 rounded-3xl animate-in fade-in slide-in-from-top-2 duration-300"><p className="text-xs font-bold text-amber-200/80 leading-relaxed italic">{q?.hint}</p></div>}
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -387,7 +370,6 @@
                                 <LucideIcon name="lightbulb" size={72} className={out ? 'text-slate-900' : 'text-slate-800'} />
                             </div>
                             <p className={`text-[10rem] font-black leading-none transition-colors duration-500 ${out ? 'text-amber-400' : 'text-slate-950'}`}>{out}</p>
-                            <div className="mt-12 bg-slate-950/50 p-6 rounded-2xl border border-white/5 w-full text-center"><p className="text-xs font-bold text-slate-400 leading-relaxed italic">"{GATE_DEFS[state.g].desc}"</p></div>
                         </div>
                     </div>
                 </div>
